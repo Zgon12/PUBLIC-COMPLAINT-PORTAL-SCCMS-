@@ -62,5 +62,4 @@ const sendCustomEmail = async (email, id) => {
     }
 };
 
-module.exports = { sendOTP };
-module.exports = { sendOTP, sendCategoryEmail, sendCustomEmail };
+module.exports = { sendOTP, sendCategoryEmail, sendCustomEmail };

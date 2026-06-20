@@ -2,8 +2,9 @@
   "name": "asep-2",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
+    "start": "node server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -16,7 +17,6 @@
     "express": "^5.2.1",
     "express-session": "^1.19.0",
     "mongoose": "^9.3.1",
-    "multer": "^2.1.1",
     "nodemailer": "^8.0.2"
   }
 }

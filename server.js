@@ -3,7 +3,6 @@ const express = require('express');
 const mongoose = require('mongoose');
 const session = require('express-session');
 const path = require('path');
-const multer = require('multer');
 const CustomRequest = require('./models/CustomRequest');
 const { sendCategoryEmail, sendCustomEmail } = require('./utils/mailer');
 
@@ -47,17 +46,7 @@ const categoryDescriptions = {
     "0803": "Illegal Activities & Weak Enforcement"
 };
 
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, 'public/uploads/');
-    },
-    filename: (req, file, cb) => {
-        const uniqueName = Date.now() + '-' + file.originalname;
-        cb(null, uniqueName);
-    }
-});
-
-const upload = multer({ storage });
+// Note: File uploads are disabled on Vercel (read-only filesystem)
 
 // 1. Database Connection
 mongoose.connect(process.env.MONGO_URI)
@@ -76,31 +65,105 @@ app.use(session({
     cookie: { secure: false }
 }));
 
-const { spawn } = require('child_process');
+// AI Classifier using Hugging Face Inference API (Vercel-compatible)
+const classifyComplaint = async (text) => {
+    const HF_TOKEN = process.env.HF_TOKEN;
+    const API_URL = 'https://api-inference.huggingface.co/models/facebook/bart-large-mnli';
 
-const classifyComplaint = (text) => {
-    return new Promise((resolve, reject) => {
-        const py = spawn('python', ['ai/classifier.py', text]);
+    // Define the candidate labels based on your category system
+    const candidateLabels = [
+        'bus timing delay transport schedule',
+        'bus overcrowding',
+        'bus cleanliness maintenance',
+        'unsafe driving staff behavior',
+        'transport information communication',
+        'street light failure not working',
+        'insufficient street lighting',
+        'street light maintenance delay',
+        'water supply shortage irregular',
+        'water leakage pipeline damage',
+        'poor water quality',
+        'garbage collection issues',
+        'improper waste disposal open dumping',
+        'waste management infrastructure',
+        'road damage potholes poor condition',
+        'poor road construction maintenance',
+        'road flooding drainage',
+        'footpath pedestrian infrastructure',
+        'blocked drains drainage overflow',
+        'poor sewage infrastructure',
+        'water stagnation hygiene',
+        'stray animal issues',
+        'noise pollution',
+        'public obstructions hazards',
+        'public safety concerns',
+        'slow government services',
+        'corruption lack of transparency',
+        'illegal activities weak enforcement'
+    ];
 
-        let data = '';
+    const labelToCategory = {
+        'bus timing delay transport schedule': '0101',
+        'bus overcrowding': '0102',
+        'bus cleanliness maintenance': '0103',
+        'unsafe driving staff behavior': '0104',
+        'transport information communication': '0105',
+        'street light failure not working': '0201',
+        'insufficient street lighting': '0202',
+        'street light maintenance delay': '0203',
+        'water supply shortage irregular': '0301',
+        'water leakage pipeline damage': '0302',
+        'poor water quality': '0303',
+        'garbage collection issues': '0401',
+        'improper waste disposal open dumping': '0402',
+        'waste management infrastructure': '0403',
+        'road damage potholes poor condition': '0501',
+        'poor road construction maintenance': '0502',
+        'road flooding drainage': '0503',
+        'footpath pedestrian infrastructure': '0504',
+        'blocked drains drainage overflow': '0601',
+        'poor sewage infrastructure': '0602',
+        'water stagnation hygiene': '0603',
+        'stray animal issues': '0701',
+        'noise pollution': '0702',
+        'public obstructions hazards': '0703',
+        'public safety concerns': '0704',
+        'slow government services': '0801',
+        'corruption lack of transparency': '0802',
+        'illegal activities weak enforcement': '0803'
+    };
 
-        py.stdout.on('data', (chunk) => {
-            data += chunk.toString();
+    try {
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${HF_TOKEN}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                inputs: text,
+                parameters: { candidate_labels: candidateLabels }
+            })
         });
 
-        py.stderr.on('data', (err) => {
-            console.error('Python Error:', err.toString());
-        });
+        const result = await response.json();
 
-        py.on('close', () => {
-            try {
-                const result = JSON.parse(data);
-                resolve(result);
-            } catch (err) {
-                reject('Invalid JSON from Python');
-            }
-        });
-    });
+        if (result.error) {
+            throw new Error(result.error);
+        }
+
+        const topLabel = result.labels[0];
+        const secondLabel = result.labels[1];
+
+        return {
+            category: labelToCategory[topLabel] || 'UNKNOWN',
+            secondCategory: labelToCategory[secondLabel] || 'UNKNOWN',
+            message: `Top match: ${topLabel} (${(result.scores[0] * 100).toFixed(1)}%)`
+        };
+    } catch (err) {
+        console.error('HuggingFace API Error:', err);
+        throw err;
+    }
 };
 
 // 3. Auth Gatekeeper (Protecting Routes)
@@ -272,14 +335,13 @@ app.post('/custom-request', isAuthenticated, async (req, res) => {
     }
 });
 
-app.post('/submit-complaint', isAuthenticated, upload.single('image'), async (req, res) => {
+app.post('/submit-complaint', isAuthenticated, async (req, res) => {
     const text = req.body.text;
     const category = req.body.category;
     if (!text || !category) {
         return res.status(400).send('Missing complaint data');
     }
     const email = req.session.user.email;
-    const imagePath = req.file ? `/uploads/${req.file.filename}` : null;
 
     try {
 
@@ -295,8 +357,7 @@ app.post('/submit-complaint', isAuthenticated, upload.single('image'), async (re
             text,
             category,
             adminID,
-            userID,
-            image: imagePath
+            userID
         });
 
         await newComplaint.save();
@@ -583,4 +644,10 @@ app.get('/deleted-complaints', async (req, res) => {
     }
 });
 
-app.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
+// Only listen when running locally (not on Vercel)
+if (process.env.VERCEL !== '1') {
+    app.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
+}
+
+// Export for Vercel serverless
+module.exports = app;
