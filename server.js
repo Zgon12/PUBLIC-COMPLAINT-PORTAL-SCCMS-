@@ -147,19 +147,39 @@ const classifyComplaint = async (text) => {
     };
 
     try {
-        const response = await fetch(API_URL, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${HF_TOKEN}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                inputs: text,
-                parameters: { candidate_labels: candidateLabels }
-            })
-        });
+        let result;
+        let retries = 5;
+        let delay = 5000;
 
-        const result = await response.json();
+        while (retries > 0) {
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            if (HF_TOKEN) {
+                headers['Authorization'] = `Bearer ${HF_TOKEN}`;
+            }
+
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({
+                    inputs: text,
+                    parameters: { candidate_labels: candidateLabels }
+                })
+            });
+
+            result = await response.json();
+
+            if (result.error && result.error.includes("is currently loading")) {
+                console.log(`⏳ Model is loading. Retrying in ${delay / 1000}s... (${retries} retries left)`);
+                await new Promise(res => setTimeout(res, delay));
+                retries--;
+            } else if (result.error) {
+                throw new Error(result.error);
+            } else {
+                break; // Success
+            }
+        }
 
         if (result.error) {
             throw new Error(result.error);

@@ -24,7 +24,6 @@
 
             <textarea id="complaintText" placeholder="Describe your issue..." rows="5"></textarea>
             <br><br>
-            <input type="file" id="imageInput">
 
             <button onclick="analyzeComplaint()">Analyze</button>
 
@@ -132,6 +131,7 @@
             } else {
                 const errText = await res.text();
                 console.error("❌ Analyze failed:", errText);
+                document.getElementById('fileResponse').innerHTML = `<p style="color:red;">❌ Analyze failed: ${errText}</p>`;
             }
         }
 
@@ -149,19 +149,14 @@
             console.log("🚀 Submitting category:", window.selectedCategory);
             const text = document.getElementById('complaintText').value;
 
-            const formData = new FormData();
-            formData.append("text", text);
-            formData.append("category", window.selectedCategory);
-
-            const file = document.getElementById("imageInput").files[0];
-            if (file) {
-                formData.append("image", file);
-            }
-
             const res = await fetch('/submit-complaint', {
                 method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                body: formData
+                body: JSON.stringify({
+                    text,
+                    category: window.selectedCategory
+                })
             });
 
             const data = await res.json();
