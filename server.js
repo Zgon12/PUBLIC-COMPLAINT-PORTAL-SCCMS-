@@ -2,11 +2,15 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const session = require('express-session');
+const MongoStore = require('connect-mongo');
 const path = require('path');
 const CustomRequest = require('./models/CustomRequest');
 const { sendCategoryEmail, sendCustomEmail } = require('./utils/mailer');
 
 const app = express();
+
+// Trust proxy for Vercel (required for secure cookies behind reverse proxy)
+app.set('trust proxy', 1);
 
 const categoryDescriptions = {
     "0101": "Bus Timing Issues (Delays, Unreliable Schedule)",
@@ -61,8 +65,17 @@ app.use(express.static('public')); // Serves your CSS/JS from the public folder
 app.use(session({
     secret: process.env.SESSION_SECRET,
     resave: false,
-    saveUninitialized: true,
-    cookie: { secure: false }
+    saveUninitialized: false,
+    store: MongoStore.create({
+        mongoUrl: process.env.MONGO_URI,
+        ttl: 24 * 60 * 60 // Session TTL: 1 day
+    }),
+    cookie: {
+        secure: process.env.VERCEL === '1', // true on Vercel (HTTPS), false locally
+        httpOnly: true,
+        sameSite: 'lax',
+        maxAge: 24 * 60 * 60 * 1000 // 1 day
+    }
 }));
 
 // AI Classifier using Hugging Face Inference API (Vercel-compatible)
@@ -254,12 +267,12 @@ app.post('/auth/verify-otp', async (req, res) => {
     // 1. Find the user in the database
     console.log("1. Data from Form:", req.body);
     const user = await User.findOne({ email: req.body.email });
-    console.log("2. User found:", user.email);
 
     if (!user) {
         console.log("3. ERROR: No user found with that email.");
         return res.status(400).send('User not found.');
     }
+    console.log("2. User found:", user.email);
     // ...
 
     // 2. Check if OTP matches and hasn't expired
