@@ -1,0 +1,3 @@
+sentence-transformers
+deep-translator
+torch

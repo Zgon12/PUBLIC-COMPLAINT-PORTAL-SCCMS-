@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify OTP — ASEP 2</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+
+<body>
+    <div class="login-container">
+        <h2>Verify Your Email</h2>
+        <p>Enter the 6-digit code sent to your inbox.</p>
+        <form id="otpForm">
+            <input type="hidden" id="email" name="email" value="{{email}}">
+            <input type="text" id="otp" name="otp" placeholder="6-Digit Code" maxlength="6" required>
+            <button type="submit">Verify & Login</button>
+        </form>
+    </div>
+
+    <script>
+        document.getElementById('otpForm').addEventListener('submit', async function (e) {
+
+            e.preventDefault();
+
+            const email = document.getElementById('email').value;
+            const otp = document.getElementById('otp').value;
+
+            const res = await fetch('/auth/verify-otp', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    email,
+                    otp
+                })
+            });
+
+            if (res.ok) {
+                window.location.href = '/';
+            } else {
+                alert('Invalid or Expired OTP');
+            }
+        });
+    </script>
+</body>
+
+</html>

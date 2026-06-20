@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASEP 2 — Public Complaint Portal</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+
+<body>
+
+    <div class="login-container">
+
+        <h2>Welcome to Public Complaint Portal</h2>
+
+        <button onclick="showFile()">📌 File a Complaint</button>
+        <br><br>
+        <button onclick="showTrack()">🔍 Track a Complaint</button>
+
+        <!-- FILE COMPLAINT SECTION -->
+        <div id="fileSection" style="display:none; margin-top:20px;">
+            <h3>Submit Complaint</h3>
+
+            <textarea id="complaintText" placeholder="Describe your issue..." rows="5"></textarea>
+            <br><br>
+            <input type="file" id="imageInput">
+
+            <button onclick="analyzeComplaint()">Analyze</button>
+
+            <p id="fileResponse"></p>
+            <div id="customBox" style="display:none; margin-top:15px;">
+                <input type="text" id="customInput" placeholder="Enter your category suggestion">
+                <button onclick="submitCustom()">Submit Request</button>
+            </div>
+        </div>
+
+        <!-- TRACK COMPLAINT SECTION -->
+        <div id="trackSection" style="display:none; margin-top:20px;">
+            <h3>Track Complaint</h3>
+
+            <input type="text" id="trackID" placeholder="Enter 4-digit ID">
+            <br><br>
+
+            <button onclick="trackComplaint()">Track</button>
+
+            <p id="trackResponse"></p>
+            <div style="margin-top:20px;">
+                <h3>Delete Complaint</h3>
+
+                <input type="text" id="deleteID" placeholder="Enter 4-digit ID">
+                <br><br>
+
+                <button onclick="deleteComplaint()">Delete</button>
+
+                <p id="deleteResponse"></p>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Toggle UI
+        function showFile() {
+            document.getElementById('fileSection').style.display = 'block';
+            document.getElementById('trackSection').style.display = 'none';
+        }
+
+        function showTrack() {
+            document.getElementById('trackSection').style.display = 'block';
+            document.getElementById('fileSection').style.display = 'none';
+        }
+
+        function showCustomBox() {
+            document.getElementById('customBox').style.display = 'block';
+        }
+
+        // Analyze Complaint
+        async function analyzeComplaint() {
+            const text = document.getElementById('complaintText').value;
+            document.getElementById('customBox').style.display = 'none';
+            document.getElementById('customInput').value = '';
+            window.isCustom = false;  // reset every time
+
+            if (!text) {
+                alert("Enter complaint");
+                return;
+            }
+
+            console.log("📤 Sending to /analyze:", text);
+
+            const res = await fetch('/analyze', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'   // ✅ FIX 1
+                },
+                credentials: 'include',
+                body: JSON.stringify({ text })
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+
+                console.log("📥 AI Response:", data);
+
+                let html = "";
+
+                if (data.category) {
+                    html = `📂 Category: <b>${data.category}</b><br>
+📝 ${data.description}`;
+                } else {
+                    html += `⚠️ Could not confidently classify this complaint.`;
+                }
+
+                if (data.category) {
+                    window.selectedCategory = data.category;
+                } else {
+                    window.selectedCategory = null;
+                }
+
+                if (data.message && data.message.includes("Low confidence")) {
+                    html += `<br><button onclick="retryCategory('${data.secondCategory}')">
+                        Retry (Better Match)
+                     </button>`;
+                }
+
+                html += `<br><br>
+<button onclick="confirmSubmission()">Confirm & Submit</button>
+<br><br>
+<button onclick="showCustomBox()">Not satisfied? Suggest Category</button>`;
+                document.getElementById('fileResponse').innerHTML = html;
+            } else {
+                const errText = await res.text();
+                console.error("❌ Analyze failed:", errText);
+            }
+        }
+
+        function retryCategory(secondCategory) {
+            window.selectedCategory = secondCategory;
+
+            document.getElementById('fileResponse').innerHTML =
+                `⚠️ Using alternative category: <b>${secondCategory}</b>
+         <br><br>
+         <button onclick="confirmSubmission()">Confirm & Submit</button>
+         <br><br>
+         <button onclick="showCustomBox()">Not satisfied? Suggest Category</button>`;
+        }
+        async function confirmSubmission() {
+            console.log("🚀 Submitting category:", window.selectedCategory);
+            const text = document.getElementById('complaintText').value;
+
+            const formData = new FormData();
+            formData.append("text", text);
+            formData.append("category", window.selectedCategory);
+
+            const file = document.getElementById("imageInput").files[0];
+            if (file) {
+                formData.append("image", file);
+            }
+
+            const res = await fetch('/submit-complaint', {
+                method: 'POST',
+                credentials: 'include',
+                body: formData
+            });
+
+            const data = await res.json();
+
+            document.getElementById('fileResponse').innerHTML =
+                `✅ Submitted Successfully! <br>ID: <b>${data.userID}</b>`;
+            console.log("Response:", data);
+            console.log("Selected category:", window.selectedCategory);
+        }
+
+        async function submitCustom() {
+            const text = document.getElementById('complaintText').value;
+            const suggestion = document.getElementById('customInput').value;
+
+            if (!suggestion) {
+                alert("Enter your category suggestion");
+                return;
+            }
+
+            const res = await fetch('/custom-request', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    text,
+                    suggestedCategory: window.selectedCategory,
+                    userSuggestion: suggestion
+                })
+            });
+
+            const msg = await res.text();
+            document.getElementById('fileResponse').innerText = msg;
+
+            document.getElementById('customBox').style.display = 'none'; // hide after submit
+        }
+        // Track Complaint
+        async function trackComplaint() {
+            const id = document.getElementById('trackID').value;
+
+            if (!id) {
+                alert("Enter ID");
+                return;
+            }
+
+            const res = await fetch(`/track-complaint/${id}`, {
+                credentials: 'include'
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                document.getElementById('trackResponse').innerHTML =
+                    `📊 Category: ${data.category} <br>
+📝 ${data.description}<br>
+     👥 Similar Complaints: ${data.count} <br>
+     📌 Status: <b>${data.status}</b>`;
+            } else {
+                document.getElementById('trackResponse').innerText = await res.text();
+            }
+
+        }
+        async function deleteComplaint() {
+            const id = document.getElementById('deleteID').value;
+
+            if (!id) {
+                alert("Enter 4-digit ID");
+                return;
+            }
+
+            const res = await fetch(`/delete-complaint/${id}`, {
+                method: 'DELETE',
+                credentials: 'include'
+            });
+
+            const msg = await res.text();
+            document.getElementById('deleteResponse').innerText = msg;
+        }
+    </script>
+
+</body>
+
+</html>
